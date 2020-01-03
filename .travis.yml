@@ -1,0 +1,49 @@
+dist: xenial
+language: cpp
+compiler: clang
+
+#branches:
+#  only:
+#  - master
+
+#  the idea is taken from https://docs.travis-ci.com/user/languages/cpp#gcc-on-linux
+matrix:
+  include:
+    - os: linux
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-8
+            - doxygen
+            - graphviz
+            #- libboost-test-dev
+      env:
+         - MATRIX_EVAL="CC=gcc-8 && CXX=g++-8"
+before_install:
+    - eval "${MATRIX_EVAL}"
+     # the idea is taken from https://github.com/travis-ci/travis-ci/issues/1379
+    - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-8 60
+      
+script:
+- cmake .
+- cmake --build .
+# - cmake --build . --target test
+- cmake --build . --target package
+- doxygen
+
+deploy:
+  - provider: script
+    skip_cleanup: true
+    script:
+      - curl -f -T bulkmt-0.0.$TRAVIS_BUILD_NUMBER-Linux.deb -uznseday:$BINTRAY_API_KEY "https://api.bintray.com/content/znseday/otus-cpp/homework/$TRAVIS_BUILD_NUMBER/bulkmt-0.0.$TRAVIS_BUILD_NUMBER-Linux.deb;deb_distribution=xenial;deb_component=main;deb_architecture=amd64;publish=1"
+  - provider: pages
+    skip_cleanup: true
+    github_token: $GH_REPO_TOKEN  # Set in the settings page of your repository, as a secure variable
+    # keep_history: true
+    local_dir: $TRAVIS_BUILD_DIR/html
+    # target_branch: gh-pages
+    on:
+      branch: master
+      
