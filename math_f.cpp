@@ -2,7 +2,7 @@
 
 #include <stdexcept>
 
-unsigned long long fa(unsigned long long n)
+unsigned long long MyFa(unsigned long long n)
 {
     unsigned long long res = 1;
     for (unsigned long long i = 2; i <= n; i++)
@@ -11,7 +11,7 @@ unsigned long long fa(unsigned long long n)
     return res;
 }
 
-unsigned long long fi(unsigned long long n)
+unsigned long long MyFi(unsigned long long n)
 {
     if (n <= 0) return 0;
     if (n == 1 || n == 2) return 1;
