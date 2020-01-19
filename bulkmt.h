@@ -232,7 +232,7 @@ public:
                     //size_t cmds_size = cmds.size();
                     for (size_t i = 0; i < cmds_size; i++)
                     {
-                        unsigned long long fa_res = fa(stoi(cmds[i]));
+                        unsigned long long fa_res = MyFa(stoi(cmds[i]));
                         console_m.lock();
                         std::cout << fa_res << (  (i<(cmds_size-1)) ? ", " : "\n");
                         console_m.unlock();
@@ -277,7 +277,7 @@ public:
                     for (size_t i = 0; i < cmds_size; i++)
                     {
                         //file_m.lock();
-                        unsigned long long fi_res = fi(stoi(cmds[i]));
+                        unsigned long long fi_res = MyFi(stoi(cmds[i]));
                         //file_m.unlock();
 
                         f << fi_res << std::endl;
