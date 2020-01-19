@@ -10,9 +10,9 @@ endif()
 
 
 if(WIN32 OR WIN64)
-    add_executable(bulkmt main.cpp bulkmt.cpp bulkmt.h)
+    add_executable(bulkmt main.cpp bulkmt.cpp bulkmt.h math_f.cpp math_f.h)
 else()
-    add_executable(bulkmt main.cpp bulkmt.cpp)
+    add_executable(bulkmt main.cpp bulkmt.cpp math_f.cpp)
 endif()
 
 
