@@ -8,12 +8,19 @@ else()
     project(bulkmt VERSION 0.0.$ENV{TRAVIS_BUILD_NUMBER})
 endif()
 
+find_package(Threads)
 
-if(WIN32 OR WIN64)
+
+#if(WIN32 OR WIN64)
     add_executable(bulkmt main.cpp bulkmt.cpp bulkmt.h math_f.cpp math_f.h)
-else()
-    add_executable(bulkmt main.cpp bulkmt.cpp math_f.cpp)
-endif()
+#else()
+#    add_executable(bulkmt main.cpp bulkmt.cpp math_f.cpp)
+#endif()
+
+target_link_libraries(bulkmt
+    ${CMAKE_THREAD_LIBS_INIT}
+)
+
 
 
 if(WIN32 OR WIN64)
