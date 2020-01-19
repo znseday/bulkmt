@@ -8,8 +8,9 @@
 
 using namespace std;
 
+std::mutex console_m;
 
-
+/*
 void TestFile(const char *file_name)
 {
     cout << "File: " << file_name << endl;
@@ -27,10 +28,10 @@ void TestFile(const char *file_name)
     //ConsoleObserver   ConsoleObs(&cmds);
 
     auto ConsoleObs = make_shared<ConsoleObserver>();
-    ConsoleObs->JustNotConstructor(cmds);
+    ConsoleObs->Register(cmds);
 
     auto LocalFileObs = std::make_shared<LocalFileObserver>();
-    LocalFileObs->JustNotConstructor(cmds);
+    LocalFileObs->Register(cmds);
 
     string line;
     while (getline(i_stream, line))
@@ -45,5 +46,5 @@ void TestFile(const char *file_name)
     i_stream.close();
     cout << endl << endl;
 }
-
+*/
 

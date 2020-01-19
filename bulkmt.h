@@ -9,9 +9,16 @@
 #include <memory>
 //#include <chrono>
 //#include <ratio>
-//#include <thread>
+#include <thread>
 #include <ctime>
+#include <sstream>
+#include <condition_variable>
+#include <iostream>
+#include <queue>
+#include <thread>
+#include <future>
 
+#include "math_f.h"
 
 using namespace std;
 
@@ -31,14 +38,95 @@ using namespace std;
 void TestFile(const char *file_name);
 //-----------------------------------------------
 
+extern std::mutex console_m;
+
+//using args = std::tuple<
+////        std::function<void(const std::string &, const std::string &)>,
+//        std::future<void>
+//        >;
+
+using args = std::future<void>;
+
+//-----------------------------------------------
+
+
 class Observer
 {
-private:
+protected:
+
+    std::condition_variable cv;
+    std::mutex cv_m;
+
+    std::thread thread;
+
+    std::queue<args> msgs; // futures!
+    std::atomic_bool quit = false;
+
+//    void operator()()
+//    {
+//        while (!quit)
+//        {
+//            std::unique_lock<std::mutex> lk(cv_m);
+//            console_m.lock();
+//            std::cerr << std::this_thread::get_id() << " waiting... " << std::endl;
+//            console_m.unlock();
+//            //cv.wait(lk, [&msgs]() { return !msgs.empty() || quit; });
+//            cv.wait(lk, [this]() { return !msgs.empty() || quit; });
+
+//            if (!msgs.empty())
+//            {
+//               auto [f] = std::move(msgs.front());
+//               msgs.pop();
+
+//               auto s = msgs.size();
+//               lk.unlock();
+
+//               f.get();
+
+//               console_m.lock();
+//               std::cerr << std::this_thread::get_id() << " leave " << s << std::endl;
+//               console_m.unlock();
+//           }
+//        }
+//    }
 
 public:
 
-    virtual void Do(/*OutputType out_, */const std::vector<std::string> &cmds, /*std::chrono::time_point<std::chrono::high_resolution_clock>*/ time_t t) = 0;
-    virtual ~Observer() = default;
+    Observer() : thread( [this](){ while (!quit)
+        {
+            std::unique_lock<std::mutex> lk(cv_m);
+            console_m.lock();
+            std::cerr << std::this_thread::get_id() << " waiting... " << std::endl;
+            console_m.unlock();
+            //cv.wait(lk, [&msgs]() { return !msgs.empty() || quit; });
+            cv.wait(lk, [this]() { return !msgs.empty() || quit; });
+
+            if (!msgs.empty())
+            {
+               auto f = std::move(msgs.front());
+               msgs.pop();
+
+               auto s = msgs.size();
+               lk.unlock();
+
+//               console_m.lock();
+//               std::cerr << std::this_thread::get_id() << " s = " << s << "   before f.get()" << std::endl;
+//               console_m.unlock();
+
+               f.get();
+
+               console_m.lock();
+               std::cerr << std::this_thread::get_id() << " leave " << s << std::endl;
+               console_m.unlock();
+           }
+        }}  )
+    {}
+
+    virtual void Do(/*OutputType out_, */const std::vector<std::string> &cmds, time_t t) = 0;
+    virtual ~Observer() {quit = true;}
+
+    void Join() {thread.join();}
+    void Quit() {quit = true;}
 };
 //-----------------------------------------------
 
@@ -101,16 +189,15 @@ public:
                 //cmds.clear();
             }
         }
-
     }
 
-    void ExecForAllSubs(bool isFinished  /*const std::vector<std::string> &_cmds*/)
-    {
+    void ExecForAllSubs(bool isFinished)
+    {      
         if ( !cmds.empty() &&  ( BracketOpenLevel == 0 || (BracketOpenLevel == 1 && !isFinished) ) )
         {
             for (auto &s : subs)
             {
-                s->Do(cmds, timeFirst);
+                s->Do(cmds, timeFirst);             // "Do" means to add into queue of futures !
                 //s.get()->Do(cmds, timeFirst);
             }
 
@@ -125,59 +212,97 @@ class ConsoleObserver : public std::enable_shared_from_this<ConsoleObserver>, pu
 {
 public:
 
-//    ConsoleObserver(Commands *_cmds)
-//    {
-//    }
-
-    //void JustNotConstructor(Commands *_cmds)
-    void JustNotConstructor(const unique_ptr<Commands> &_cmds)
+    void Register(const unique_ptr<Commands> &_cmds)
     {
         auto t = shared_from_this();
         _cmds->subscribe(t);
     }
 
-    void Do(const std::vector<std::string> &cmds, [[maybe_unused]]/* std::chrono::time_point<std::chrono::high_resolution_clock>*/ time_t t) override
+    void Do(const std::vector<std::string> &cmds, [[maybe_unused]] time_t t) override
     {
-        //std::cout << MY_P_FUNC << std::endl;
-        std::cout << "bulk: ";
-        size_t cmds_size = cmds.size();
-        for (size_t i = 0; i < cmds_size; i++)
-            std::cout << cmds[i] << (  (i<(cmds_size-1)) ? ", " : "\n");
+        {
+            std::lock_guard<std::mutex> lk(cv_m);
+            msgs.emplace(std::async( std::launch::deferred, [cmds]()
+                {
+                    console_m.lock();
+                    std::cout << "bulk: ";
+                    size_t cmds_size = cmds.size();
+                    std::cout << "(size = " << cmds_size << ") : ";
+                    console_m.unlock();
+                    //size_t cmds_size = cmds.size();
+                    for (size_t i = 0; i < cmds_size; i++)
+                    {
+                        unsigned long long fa_res = fa(stoi(cmds[i]));
+                        console_m.lock();
+                        std::cout << fa_res << (  (i<(cmds_size-1)) ? ", " : "\n");
+                        console_m.unlock();
+                    }
+
+                } ));
+
+        }
+        cv.notify_one();
+
+//        std::cout << "bulk: ";
+//        size_t cmds_size = cmds.size();
+//        for (size_t i = 0; i < cmds_size; i++)
+//            std::cout << fa(stoi(cmds[i])) << (  (i<(cmds_size-1)) ? ", " : "\n");
     }
 };
 //-----------------------------------------------
 
 class LocalFileObserver : public Observer, public std::enable_shared_from_this<LocalFileObserver>
 {
+protected:
+    //std::mutex file_m;
 public:
-//    LocalFileObserver(Commands *_cmds)
-//    {
-//    }
 
-    //void JustNotConstructor(Commands *_cmds)
-    void JustNotConstructor(const unique_ptr<Commands> &_cmds)
+    void Register(const unique_ptr<Commands> &_cmds)
     {
         _cmds->subscribe(shared_from_this());
     }
 
-    void Do(const std::vector<std::string> &cmds, /*std::chrono::time_point<std::chrono::high_resolution_clock>*/ time_t t) override
-    {
-        //std::cout << MY_P_FUNC << std::endl;
-        //size_t tInSecs = std::chrono::duration_cast<std::chrono::milliseconds>(t).count(); // doesn't work. Why ???
+    void Do(const std::vector<std::string> &cmds, time_t t) override
+    {    
+        {
+            std::lock_guard<std::mutex> lk(cv_m);
+            msgs.emplace(std::async( std::launch::deferred, [cmds, t]()
+                {
+                    stringstream s;
+                    s << "bulk" << t << "-" << std::this_thread::get_id() << ".log";
+                    ofstream f( s.str() );
 
-        ofstream f( std::string("bulk") + std::to_string(t) + std::string(".log") );
+                    size_t cmds_size = cmds.size();
 
-        size_t cmds_size = cmds.size();
-        for (size_t i = 0; i < cmds_size; i++)
-            f << cmds[i] << std::endl;
+                    for (size_t i = 0; i < cmds_size; i++)
+                    {
+                        //file_m.lock();
+                        unsigned long long fi_res = fi(stoi(cmds[i]));
+                        //file_m.unlock();
 
-        f.close();
+                        f << fi_res << std::endl;
+                    }
+
+                    f.close();
+
+                } ));
+
+        }
+        cv.notify_one();
+
+
+//        stringstream s;
+//        s << "bulk" << t << "-" << std::this_thread::get_id() << ".log";
+//        ofstream f( s.str() );
+
+//        size_t cmds_size = cmds.size();
+//        for (size_t i = 0; i < cmds_size; i++)
+//            f << fi(stoi(cmds[i])) << std::endl;
+
+//        f.close();
     }
 };
 //-----------------------------------------------
-
-
-
 
 
 
