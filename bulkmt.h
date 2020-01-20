@@ -59,7 +59,7 @@ protected:
 
     std::thread thread;
 
-    std::queue<args> msgs; // futures!
+    std::queue<args> q_futures; // futures!
     std::atomic_bool quit = false;
 
 //    void operator()()
@@ -92,6 +92,10 @@ protected:
 
 public:
 
+    // сначала хотел просто сделать Observer() : thread(this) и описать operator(), т.е. сделать this callable-объектом. Но почему-то не компилировалось.
+    // придумал вариант с лямбдой в конструкторе, в этом варианте работает.
+    // Также в голове вертится мысль "а можно ли отнаследоватся от thread и что-то переопределить волшебное?", т.к. именно таким способом принято программировать многопоточность в C++Builder с их библиотечными потоками.
+
     Observer() : thread( [this](){ while (!quit)
         {
             std::unique_lock<std::mutex> lk(cv_m);
@@ -99,21 +103,21 @@ public:
             std::cerr << std::this_thread::get_id() << " waiting... " << std::endl;
             console_m.unlock();
             //cv.wait(lk, [&msgs]() { return !msgs.empty() || quit; });
-            cv.wait(lk, [this]() { return !msgs.empty() || quit; });
+            cv.wait(lk, [this]() { return !q_futures.empty() || quit; });
 
-            if (!msgs.empty())
+            if (!q_futures.empty())
             {
-               auto f = std::move(msgs.front());
-               msgs.pop();
+               auto f = std::move(q_futures.front());
+               q_futures.pop();
 
-               auto s = msgs.size();
+               auto s = q_futures.size();
                lk.unlock();
 
 //               console_m.lock();
 //               std::cerr << std::this_thread::get_id() << " s = " << s << "   before f.get()" << std::endl;
 //               console_m.unlock();
 
-               f.get();
+               f.get(); // Просто выполняем фьючу чтобы там ни лижало
 
                console_m.lock();
                std::cerr << std::this_thread::get_id() << " leave " << s << std::endl;
@@ -122,8 +126,9 @@ public:
         }}  )
     {}
 
-    virtual void Do(/*OutputType out_, */const std::vector<std::string> &cmds, time_t t) = 0;
-    virtual ~Observer() {quit = true;}
+    virtual void Do(/*const*/ std::vector<std::string> &cmds_block, time_t t) = 0;
+
+    virtual ~Observer() {quit = true;} // на всякий случай. Это вообще хороая идея? Имеет ли смысл?
 
     void Join() {thread.join();}
     void Quit() {quit = true;}
@@ -134,23 +139,19 @@ class Commands
 {
 private:
 
-    //std::vector<Observer *> subs;
-    //std::vector<unique_ptr<Observer>> subs;
     std::vector<shared_ptr<Observer>> subs;
 
     size_t N = 3;
     size_t BracketOpenLevel = 0;
     std::vector<std::string> cmds;
+    std::vector<std::string> cmds_copy;
 
-    //std::chrono::time_point<std::chrono::high_resolution_clock> timeFirst;
     time_t timeFirst;
 
 public:
 
     Commands(size_t _N) : N(_N) {}
 
-    //void subscribe(Observer *obs)
-    //void subscribe(shared_ptr<Observer> &&obs)
     void subscribe(const shared_ptr<Observer> &obs)
     {
         //subs.push_back(std::move(obs));
@@ -163,7 +164,6 @@ public:
         {
             if (cmds.empty())
                 timeFirst = std::time(nullptr);
-                //timeFirst = std::chrono::high_resolution_clock::now();
 
             cmds.push_back(str); // emplace_back
         }
@@ -195,10 +195,11 @@ public:
     {      
         if ( !cmds.empty() &&  ( BracketOpenLevel == 0 || (BracketOpenLevel == 1 && !isFinished) ) )
         {
+            cmds_copy = cmds;
+
             for (auto &s : subs)
             {
-                s->Do(cmds, timeFirst);             // "Do" means to add into queue of futures !
-                //s.get()->Do(cmds, timeFirst);
+                s->Do(cmds_copy, timeFirst);             // "Do" means to add into queue of futures !
             }
 
             cmds.clear();
@@ -214,15 +215,16 @@ public:
 
     void Register(const unique_ptr<Commands> &_cmds)
     {
-        auto t = shared_from_this();
-        _cmds->subscribe(t);
+        _cmds->subscribe(shared_from_this());
     }
 
-    void Do(const std::vector<std::string> &cmds, [[maybe_unused]] time_t t) override
+    void Do(/*const*/ std::vector<std::string> &cmds, [[maybe_unused]] time_t t) override
     {
         {
             std::lock_guard<std::mutex> lk(cv_m);
-            msgs.emplace(std::async( std::launch::deferred, [cmds]()
+            if (cmds.empty())
+                return;
+            q_futures.emplace(std::async( std::launch::deferred, [cmds]()
                 {
                     console_m.lock();
                     std::cout << "bulk: ";
@@ -239,7 +241,7 @@ public:
                     }
 
                 } ));
-
+            cmds.clear();
         }
         cv.notify_one();
 
@@ -254,7 +256,7 @@ public:
 class LocalFileObserver : public Observer, public std::enable_shared_from_this<LocalFileObserver>
 {
 protected:
-    //std::mutex file_m;
+    std::mutex file_m; // вспомогательный мьютекс для LocalFileObserver
 public:
 
     void Register(const unique_ptr<Commands> &_cmds)
@@ -262,36 +264,48 @@ public:
         _cmds->subscribe(shared_from_this());
     }
 
-    void Do(const std::vector<std::string> &cmds, time_t t) override
+    void Do(/*const*/ std::vector<std::string> &cmds_block, time_t t) override
     {    
         {
-            std::lock_guard<std::mutex> lk(cv_m);
-            msgs.emplace(std::async( std::launch::deferred, [cmds, t]()
+            std::lock_guard<std::mutex> lk(cv_m); // все, что дальше этой строчки будет выполнено только в одном потоке???
+//            if (cmds_block.empty())
+//                return;   // если кто-то до этого момента уже исполнил блок, то делать нечего - выходим
+            q_futures.emplace(std::async( std::launch::deferred, [&cmds_block, t, this]() // Если бы было [cmds_block, t] то cmds - это же копия ??? т.е. можно ее уже не блокировать и использовать в том виде, в котором она пришла?
                 {
+                    // здесь и далее в лямбде - код, который будет выполнятся не сейчас, а когда-то позже в отдельном потоке
+                    if (cmds_block.empty())
+                        return;   // если кто-то до этого момента уже исполнил блок, то делать нечего - выходим
+
                     stringstream s;
                     s << "bulk" << t << "-" << std::this_thread::get_id() << ".log";
                     ofstream f( s.str() );
 
-                    size_t cmds_size = cmds.size();
+                    size_t cmds_block_size = cmds_block.size();
 
-                    for (size_t i = 0; i < cmds_size; i++)
+                    for (size_t i = 0; i < cmds_block_size; i++)
                     {
-                        //file_m.lock();
-                        unsigned long long fi_res = fi(stoi(cmds[i]));
-                        //file_m.unlock();
+                        file_m.lock();
+                        unsigned long long fi_param = stoi(cmds_block[i]);
+                        file_m.unlock();
+                        // далее само долгое вычисления пусть будет незалоченым и выполняется параллельно
+                        unsigned long long fi_res = fi(fi_param); // если cmds_block - локальная копия, то можно не лочить, верно?
 
-                        f << fi_res << std::endl;
+                        f << fi_res << std::endl; // файловые потоки не лочим, т.к. они все уникальные для каждого потока. Верно?
                     }
+
+                    file_m.lock();
+                    cmds_block.clear();  // удаляем блок команд, чтобы больше никому не достался
+                    file_m.unlock();
 
                     f.close();
 
-                } ));
+                } ));  // конец лямбды
 
+//            cmds.clear();  // удаляем блок команд, чтобы больше никому не достался
         }
         cv.notify_one();
 
-
-//        stringstream s;
+//        stringstream s; // далее - остатки старой обычной бульки
 //        s << "bulk" << t << "-" << std::this_thread::get_id() << ".log";
 //        ofstream f( s.str() );
 

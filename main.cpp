@@ -45,8 +45,8 @@ int main(int argc, const char **argv)
 //    LocalFileObserver LocalFileObs(&cmds);
 //    ConsoleObserver   ConsoleObs(&cmds);
 
-    auto ConsoleObs = make_shared<ConsoleObserver>();
-    ConsoleObs->Register(cmds_Console);
+    //auto ConsoleObs = make_shared<ConsoleObserver>();
+    //ConsoleObs->Register(cmds_Console);
 
     auto LocalFileObs1 = std::make_shared<LocalFileObserver>();
     LocalFileObs1->Register(cmds_Files);
@@ -66,19 +66,19 @@ int main(int argc, const char **argv)
             // nothing
         #endif
 
-        cmds_Console->AnalyzeCommand(line);
+    //    cmds_Console->AnalyzeCommand(line);
         cmds_Files->AnalyzeCommand(line);
     }
-    cmds_Console->ExecForAllSubs(true);
+    //cmds_Console->ExecForAllSubs(true);
     cmds_Files->ExecForAllSubs(true);
 
     this_thread::sleep_for(1s); // for debugging
 
-    ConsoleObs->Quit();
+   // ConsoleObs->Quit();
     LocalFileObs1->Quit();
     LocalFileObs2->Quit();
 
-    ConsoleObs->Join();
+   // ConsoleObs->Join();
     LocalFileObs1->Join();
     LocalFileObs2->Join();
 
