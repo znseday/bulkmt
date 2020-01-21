@@ -250,25 +250,31 @@ public:
     {
         {
             std::lock_guard<std::mutex> lk(cv_m);
+
             q_futures.emplace( [](CommandsType _block)
                 {
                     // здесь и далее в лямбде - код, который будет выполнятся не сейчас, а когда-то позже в отдельном потоке
                     if (_block.empty())
                         return;   // если кто-то до этого момента уже исполнил блок, то делать нечего - выходим
 
-                    console_m.lock();
-                    std::cout << "bulk: ";
-                    size_t cmds_size = _block.size();
-                    std::cout << "(size = " << cmds_size << ") : ";
-                    console_m.unlock();
+                    stringstream s;     // Я так понимаю, что если бы у нас будет больше одного ConsoleObserver то начнет конка за этот s. Верно???
+                    //console_m.lock();
+                    s << "bulk: ";
+
+                    size_t cmds_size = _block.size(); // _block - это локальая копия? можно не копировать???
+
+                    s << "(size = " << cmds_size << ") : ";
+                    //console_m.unlock();
 
                     for (size_t i = 0; i < cmds_size; i++)
                     {
                         unsigned long long fa_res = fa(stoi(_block[i]));
-                        console_m.lock();
-                        std::cout << fa_res << (  (i<(cmds_size-1)) ? ", " : "\n");
-                        console_m.unlock();
+                        s << fa_res << (  (i<(cmds_size-1)) ? ", " : "\n");
                     }
+
+                    console_m.lock();
+                    std::cout << s.str();
+                    console_m.unlock();
 
                 } // конец лямбды
                 , cmds_blocks);
