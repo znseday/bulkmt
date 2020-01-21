@@ -310,9 +310,9 @@ public:
                     if (_block.empty())
                         return;   // если кто-то до этого момента уже исполнил блок, то делать нечего - выходим
 
-                    static int nFile = 0; // Сквозная нумерация
+                    static std::atomic_int nFile = 0; // Сквозная нумерация // Нужно делать атомиком???
 
-                    stringstream s;
+                    stringstream s; // Этот s у каждой лямбды свой или может быть подстава?
                     s << "bulk" << t << "-" << std::this_thread::get_id() << "-" << nFile++ << ".log";
                     ofstream f( s.str() );
 
@@ -328,10 +328,6 @@ public:
 
                         f << fi_res << std::endl; // файловые потоки не лочим, т.к. они все уникальные для каждого потока. Верно?
                     }
-
-                    //file_m.lock();
-                    //cmds_block.clear();  // удаляем блок команд, чтобы больше никому не достался
-                    //file_m.unlock();
 
                     f.close();
 
