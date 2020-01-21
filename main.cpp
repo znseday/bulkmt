@@ -12,6 +12,8 @@
 
 using namespace std;
 
+constexpr auto DEF_N_BLOCKS = 2;
+
 int main(int argc, const char **argv)
 {
     #if (defined WIN32) || (defined WIN64)
@@ -39,14 +41,14 @@ int main(int argc, const char **argv)
         // some
     #endif
 
-    auto cmds_Console = make_unique<Commands>( (argc<2) ? 3 : static_cast<size_t>(atoi(argv[1])) );
-    auto cmds_Files   = make_unique<Commands>( (argc<2) ? 3 : static_cast<size_t>(atoi(argv[1])) );
+    auto cmds_Console = make_unique<CommandsHandler>( (argc<2) ? DEF_N_BLOCKS : static_cast<size_t>(atoi(argv[1])) );
+    auto cmds_Files   = make_unique<CommandsHandler>( (argc<2) ? DEF_N_BLOCKS : static_cast<size_t>(atoi(argv[1])) );
 
-//    LocalFileObserver LocalFileObs(&cmds);
-//    ConsoleObserver   ConsoleObs(&cmds);
+//    LocalFileObserver LocalFileObs(&cmds);   // Old Version
+//    ConsoleObserver   ConsoleObs(&cmds);     // Old Version
 
-    //auto ConsoleObs = make_shared<ConsoleObserver>();
-    //ConsoleObs->Register(cmds_Console);
+    auto ConsoleObs = make_shared<ConsoleObserver>();
+    ConsoleObs->Register(cmds_Console);
 
     auto LocalFileObs1 = std::make_shared<LocalFileObserver>();
     LocalFileObs1->Register(cmds_Files);
@@ -66,19 +68,19 @@ int main(int argc, const char **argv)
             // nothing
         #endif
 
-    //    cmds_Console->AnalyzeCommand(line);
+        cmds_Console->AnalyzeCommand(line);
         cmds_Files->AnalyzeCommand(line);
     }
-    //cmds_Console->ExecForAllSubs(true);
+    cmds_Console->ExecForAllSubs(true);
     cmds_Files->ExecForAllSubs(true);
 
     this_thread::sleep_for(1s); // for debugging
 
-   // ConsoleObs->Quit();
+    ConsoleObs->Quit();
     LocalFileObs1->Quit();
     LocalFileObs2->Quit();
 
-   // ConsoleObs->Join();
+    ConsoleObs->Join();
     LocalFileObs1->Join();
     LocalFileObs2->Join();
 

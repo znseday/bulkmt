@@ -45,7 +45,18 @@ extern std::mutex console_m;
 //        std::future<void>
 //        >;
 
-using args = std::future<void>;
+
+using CommandsType = std::vector<std::string>;
+using CommandBlocksType = std::queue<CommandsType>;
+
+//using args = std::function<void(CommandsType)>;
+
+//using args = std::future<void(CommandBlocksType)>;
+
+using args = std::tuple<
+        std::function<void(CommandsType)>,
+        CommandBlocksType &
+        >;
 
 //-----------------------------------------------
 
@@ -99,34 +110,46 @@ public:
     Observer() : thread( [this](){ while (!quit)
         {
             std::unique_lock<std::mutex> lk(cv_m);
-            console_m.lock();
-            std::cerr << std::this_thread::get_id() << " waiting... " << std::endl;
-            console_m.unlock();
-            //cv.wait(lk, [&msgs]() { return !msgs.empty() || quit; });
+
+            //console_m.lock();
+            //std::cerr << std::this_thread::get_id() << " waiting... " << std::endl;
+            //console_m.unlock();
+
+            //cv.wait(lk, [&msgs]() { return !msgs.empty() || quit; });  // из лекции
             cv.wait(lk, [this]() { return !q_futures.empty() || quit; });
 
             if (!q_futures.empty())
             {
-               auto f = std::move(q_futures.front());
-               q_futures.pop();
+                auto [f, blocks] = std::move(q_futures.front());
+                q_futures.pop();
 
-               auto s = q_futures.size();
-               lk.unlock();
+                CommandsType block;
+
+                if (!blocks.empty())
+                {
+                    block = /*std::move*/(blocks.front());
+                    blocks.pop();
+                }
+
+                //auto s = q_futures.size();
+                lk.unlock();
 
 //               console_m.lock();
 //               std::cerr << std::this_thread::get_id() << " s = " << s << "   before f.get()" << std::endl;
 //               console_m.unlock();
 
-               f.get(); // Просто выполняем фьючу чтобы там ни лижало
+                f(block);  // Выполняем function с параметром
 
-               console_m.lock();
-               std::cerr << std::this_thread::get_id() << " leave " << s << std::endl;
-               console_m.unlock();
+                //f.get(); // Просто выполняем фьючу чтобы там ни лижало
+
+                //console_m.lock();
+                //std::cerr << std::this_thread::get_id() << " leave " << s << std::endl;
+                //console_m.unlock();
            }
         }}  )
     {}
 
-    virtual void Do(/*const*/ std::vector<std::string> &cmds_block, time_t t) = 0;
+    virtual void Do(/*const*/ CommandBlocksType &cmds_blocks, time_t t) = 0;
 
     virtual ~Observer() {quit = true;} // на всякий случай. Это вообще хороая идея? Имеет ли смысл?
 
@@ -135,7 +158,7 @@ public:
 };
 //-----------------------------------------------
 
-class Commands
+class CommandsHandler
 {
 private:
 
@@ -143,14 +166,17 @@ private:
 
     size_t N = 3;
     size_t BracketOpenLevel = 0;
-    std::vector<std::string> cmds;
-    std::vector<std::string> cmds_copy;
+    CommandsType cmds;
 
     time_t timeFirst;
 
+    CommandBlocksType CommandBlocks;
+
+    std::mutex to_push_mutex;
+
 public:
 
-    Commands(size_t _N) : N(_N) {}
+    CommandsHandler(size_t _N) : N(_N) {}
 
     void subscribe(const shared_ptr<Observer> &obs)
     {
@@ -195,11 +221,13 @@ public:
     {      
         if ( !cmds.empty() &&  ( BracketOpenLevel == 0 || (BracketOpenLevel == 1 && !isFinished) ) )
         {
-            cmds_copy = cmds;
+            to_push_mutex.lock();      // Нужен ли этот мьютекс? Блочит ли он все остальные потоки?
+            CommandBlocks.push(cmds);  // Нужно, чтобы этот push как-то выполнился атомарно
+            to_push_mutex.unlock();
 
             for (auto &s : subs)
             {
-                s->Do(cmds_copy, timeFirst);             // "Do" means to add into queue of futures !
+                s->Do(CommandBlocks, timeFirst);   // "Do" здесь значит просто добавить лямбду и параметр в очередь !
             }
 
             cmds.clear();
@@ -213,38 +241,41 @@ class ConsoleObserver : public std::enable_shared_from_this<ConsoleObserver>, pu
 {
 public:
 
-    void Register(const unique_ptr<Commands> &_cmds)
+    void Register(const unique_ptr<CommandsHandler> &_cmds)
     {
         _cmds->subscribe(shared_from_this());
     }
 
-    void Do(/*const*/ std::vector<std::string> &cmds, [[maybe_unused]] time_t t) override
+    void Do(/*const*/ CommandBlocksType &cmds_blocks, [[maybe_unused]] time_t t) override
     {
         {
             std::lock_guard<std::mutex> lk(cv_m);
-            if (cmds.empty())
-                return;
-            q_futures.emplace(std::async( std::launch::deferred, [cmds]()
+            q_futures.emplace( [](CommandsType _block)
                 {
+                    // здесь и далее в лямбде - код, который будет выполнятся не сейчас, а когда-то позже в отдельном потоке
+                    if (_block.empty())
+                        return;   // если кто-то до этого момента уже исполнил блок, то делать нечего - выходим
+
                     console_m.lock();
                     std::cout << "bulk: ";
-                    size_t cmds_size = cmds.size();
+                    size_t cmds_size = _block.size();
                     std::cout << "(size = " << cmds_size << ") : ";
                     console_m.unlock();
-                    //size_t cmds_size = cmds.size();
+
                     for (size_t i = 0; i < cmds_size; i++)
                     {
-                        unsigned long long fa_res = fa(stoi(cmds[i]));
+                        unsigned long long fa_res = fa(stoi(_block[i]));
                         console_m.lock();
                         std::cout << fa_res << (  (i<(cmds_size-1)) ? ", " : "\n");
                         console_m.unlock();
                     }
 
-                } ));
-            cmds.clear();
+                } // конец лямбды
+                , cmds_blocks);
         }
         cv.notify_one();
 
+          // далее код от обычной бульки
 //        std::cout << "bulk: ";
 //        size_t cmds_size = cmds.size();
 //        for (size_t i = 0; i < cmds_size; i++)
@@ -256,54 +287,61 @@ public:
 class LocalFileObserver : public Observer, public std::enable_shared_from_this<LocalFileObserver>
 {
 protected:
-    std::mutex file_m; // вспомогательный мьютекс для LocalFileObserver
+    //std::mutex file_m; // вспомогательный мьютекс для LocalFileObserver
 public:
 
-    void Register(const unique_ptr<Commands> &_cmds)
+    void Register(const unique_ptr<CommandsHandler> &_cmds)
     {
         _cmds->subscribe(shared_from_this());
     }
 
-    void Do(/*const*/ std::vector<std::string> &cmds_block, time_t t) override
+    void Do(/*const*/ CommandBlocksType &cmds_blocks, time_t t) override
     {    
         {
             std::lock_guard<std::mutex> lk(cv_m); // все, что дальше этой строчки будет выполнено только в одном потоке???
 //            if (cmds_block.empty())
 //                return;   // если кто-то до этого момента уже исполнил блок, то делать нечего - выходим
-            q_futures.emplace(std::async( std::launch::deferred, [&cmds_block, t, this]() // Если бы было [cmds_block, t] то cmds - это же копия ??? т.е. можно ее уже не блокировать и использовать в том виде, в котором она пришла?
+            //q_futures.emplace(std::async( std::launch::deferred, [t, this](CommandsType _block) // Если бы было [cmds_block, t] то cmds - это же копия ??? т.е. можно ее уже не блокировать и использовать в том виде, в котором она пришла?
+
+
+            q_futures.emplace( [t, this](CommandsType _block)
                 {
                     // здесь и далее в лямбде - код, который будет выполнятся не сейчас, а когда-то позже в отдельном потоке
-                    if (cmds_block.empty())
+                    if (_block.empty())
                         return;   // если кто-то до этого момента уже исполнил блок, то делать нечего - выходим
 
+                    static int nFile = 0; // Сквозная нумерация
+
                     stringstream s;
-                    s << "bulk" << t << "-" << std::this_thread::get_id() << ".log";
+                    s << "bulk" << t << "-" << std::this_thread::get_id() << "-" << nFile++ << ".log";
                     ofstream f( s.str() );
 
-                    size_t cmds_block_size = cmds_block.size();
+                    size_t cmds_block_size = _block.size();
 
                     for (size_t i = 0; i < cmds_block_size; i++)
                     {
-                        file_m.lock();
-                        unsigned long long fi_param = stoi(cmds_block[i]);
-                        file_m.unlock();
+                        //file_m.lock();
+                        unsigned long long fi_param = stoi(_block[i]); // сейчас _block - локальная копия
+                        //file_m.unlock();
                         // далее само долгое вычисления пусть будет незалоченым и выполняется параллельно
                         unsigned long long fi_res = fi(fi_param); // если cmds_block - локальная копия, то можно не лочить, верно?
 
                         f << fi_res << std::endl; // файловые потоки не лочим, т.к. они все уникальные для каждого потока. Верно?
                     }
 
-                    file_m.lock();
-                    cmds_block.clear();  // удаляем блок команд, чтобы больше никому не достался
-                    file_m.unlock();
+                    //file_m.lock();
+                    //cmds_block.clear();  // удаляем блок команд, чтобы больше никому не достался
+                    //file_m.unlock();
 
                     f.close();
 
-                } ));  // конец лямбды
+                },  // конец лямбды
+                cmds_blocks);
 
 //            cmds.clear();  // удаляем блок команд, чтобы больше никому не достался
         }
         cv.notify_one();
+
 
 //        stringstream s; // далее - остатки старой обычной бульки
 //        s << "bulk" << t << "-" << std::this_thread::get_id() << ".log";
