@@ -68,10 +68,10 @@ protected:
     std::condition_variable cv;
     std::mutex cv_m;
 
-    std::thread thread;
-
-    std::queue<args> q_futures; // futures!
+    std::queue<args> q_functions; // tuple of std::functions and CommandBlocksType
     std::atomic_bool quit = false;
+
+    std::thread thread;
 
 //    void operator()()
 //    {
@@ -116,12 +116,12 @@ public:
             //console_m.unlock();
 
             //cv.wait(lk, [&msgs]() { return !msgs.empty() || quit; });  // из лекции
-            cv.wait(lk, [this]() { return !q_futures.empty() || quit; });
+            cv.wait(lk, [this]() { return !q_functions.empty() || quit; });
 
-            if (!q_futures.empty())
+            if (!q_functions.empty())
             {
-                auto [f, blocks] = std::move(q_futures.front());
-                q_futures.pop();
+                auto [f, blocks] = std::move(q_functions.front());
+                q_functions.pop();
 
                 CommandsType block;
 
@@ -131,7 +131,7 @@ public:
                     blocks.pop();
                 }
 
-                //auto s = q_futures.size();
+                //auto s = q_functions.size();
                 lk.unlock();
 
 //               console_m.lock();
@@ -251,7 +251,7 @@ public:
         {
             std::lock_guard<std::mutex> lk(cv_m);
 
-            q_futures.emplace( [](CommandsType _block)
+            q_functions.emplace( [](CommandsType _block)
                 {
                     // здесь и далее в лямбде - код, который будет выполнятся не сейчас, а когда-то позже в отдельном потоке
                     if (_block.empty())
@@ -307,10 +307,10 @@ public:
             std::lock_guard<std::mutex> lk(cv_m); // все, что дальше этой строчки будет выполнено только в одном потоке???
 //            if (cmds_block.empty())
 //                return;   // если кто-то до этого момента уже исполнил блок, то делать нечего - выходим
-            //q_futures.emplace(std::async( std::launch::deferred, [t, this](CommandsType _block) // Если бы было [cmds_block, t] то cmds - это же копия ??? т.е. можно ее уже не блокировать и использовать в том виде, в котором она пришла?
+            //q_functions.emplace(std::async( std::launch::deferred, [t, this](CommandsType _block) // Если бы было [cmds_block, t] то cmds - это же копия ??? т.е. можно ее уже не блокировать и использовать в том виде, в котором она пришла?
 
 
-            q_futures.emplace( [t, this](CommandsType _block)
+            q_functions.emplace( [t, this](CommandsType _block)
                 {
                     // здесь и далее в лямбде - код, который будет выполнятся не сейчас, а когда-то позже в отдельном потоке
                     if (_block.empty())
@@ -318,7 +318,7 @@ public:
 
                     static std::atomic_int nFile = 0; // Сквозная нумерация // Нужно делать атомиком???
 
-                    stringstream s; // Этот s у каждой лямбды свой или может быть подстава?
+                    stringstream s; // Этот s у каждой лямбды свой или может быть подстава с общим доступом (data racing)?
                     s << "bulk" << t << "-" << std::this_thread::get_id() << "-" << nFile++ << ".log";
                     ofstream f( s.str() );
 
