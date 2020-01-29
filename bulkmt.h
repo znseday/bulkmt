@@ -153,6 +153,7 @@ public:
 
     virtual ~Observer() {quit = true;} // на всякий случай. Это вообще хороая идея? Имеет ли смысл?
 
+    void NotifyAll() {cv.notify_all();}
     void Join() {thread.join();}
     void Quit() {quit = true;}
 };
@@ -279,7 +280,9 @@ public:
                 } // конец лямбды
                 , cmds_blocks);
         }
-        cv.notify_one();
+        cv.notify_one();  // vs. cv.notify_all() ?????????
+        //cv.notify_all();
+
 
           // далее код от обычной бульки
 //        std::cout << "bulk: ";
@@ -342,7 +345,8 @@ public:
 
 //            cmds.clear();  // удаляем блок команд, чтобы больше никому не достался
         }
-        cv.notify_one();
+        cv.notify_one(); // vs. cv.notify_all() ????????
+        //cv.notify_all();
 
 
 //        stringstream s; // далее - остатки старой обычной бульки

@@ -74,16 +74,31 @@ int main(int argc, const char **argv)
     cmds_Console->ExecForAllSubs(true);
     cmds_Files->ExecForAllSubs(true);
 
-    this_thread::sleep_for(1s); // for debugging
+    //cerr << "before sleep" << endl;
+    this_thread::sleep_for(1s); // Подождать, пока потоки отработают все свои задачи!!! (без этого иногда выходит до вывода всех данных на экран)
+    //cerr << "after sleep, before quit" << endl;
+
+    ConsoleObs->NotifyAll();
+    LocalFileObs1->NotifyAll();
+    LocalFileObs2->NotifyAll();
 
     ConsoleObs->Quit();
     LocalFileObs1->Quit();
     LocalFileObs2->Quit();
 
+    //this_thread::sleep_for(1s); // just in case
+
+    ConsoleObs->NotifyAll();
+    LocalFileObs1->NotifyAll();
+    LocalFileObs2->NotifyAll();
+
+    //this_thread::sleep_for(1s); // just in case
+
     ConsoleObs->Join();
     LocalFileObs1->Join();
     LocalFileObs2->Join();
 
+    cerr << "ok, it's done" << endl;
     return 0;
 }
 
