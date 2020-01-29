@@ -19,6 +19,7 @@
 #include <future>
 
 #include "math_f.h"
+#include "metrics.h"
 
 using namespace std;
 
@@ -70,6 +71,8 @@ protected:
 
     std::queue<args> q_functions; // tuple of std::functions and CommandBlocksType
     std::atomic_bool quit = false;
+
+    MetricsLocalThread MetricsLocal;
 
     std::thread thread;
 
@@ -129,6 +132,9 @@ public:
                 {
                     block = /*std::move*/(blocks.front());
                     blocks.pop();
+
+                    MetricsLocal.nBlocks++;
+                    MetricsLocal.nCommands += block.size();
                 }
 
                 //auto s = q_functions.size();
@@ -156,6 +162,8 @@ public:
     void NotifyAll() {cv.notify_all();}
     void Join() {thread.join();}
     void Quit() {quit = true;}
+
+    void PrintMetrics() { cout << MetricsLocal;}
 };
 //-----------------------------------------------
 
@@ -175,6 +183,8 @@ private:
 
     std::mutex to_push_mutex;
 
+    MetricsMainThread MetricsMain;
+
 public:
 
     CommandsHandler(size_t _N) : N(_N) {}
@@ -187,6 +197,8 @@ public:
 
     void AnalyzeCommand(const std::string &str)
     {
+        MetricsMain.nLines++;
+
         if (str != "{" && str != "}")
         {
             if (cmds.empty())
@@ -226,6 +238,9 @@ public:
             CommandBlocks.push(cmds);  // Нужно, чтобы этот push как-то выполнился атомарно
             to_push_mutex.unlock();
 
+            MetricsMain.nBlocks++;
+            MetricsMain.nCommands += cmds.size();
+
             for (auto &s : subs)
             {
                 s->Do(CommandBlocks, timeFirst);   // "Do" здесь значит просто добавить лямбду и параметр в очередь !
@@ -235,6 +250,7 @@ public:
         }
     }
 
+    void PrintMetrics() { cout << MetricsMain;}
 };
 //-----------------------------------------------
 

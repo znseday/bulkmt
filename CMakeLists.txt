@@ -12,7 +12,7 @@ find_package(Threads)
 
 
 #if(WIN32 OR WIN64)
-    add_executable(bulkmt main.cpp bulkmt.cpp bulkmt.h math_f.cpp math_f.h)
+    add_executable(bulkmt main.cpp bulkmt.cpp bulkmt.h math_f.cpp math_f.h metrics.h)
 #else()
 #    add_executable(bulkmt main.cpp bulkmt.cpp math_f.cpp)
 #endif()
@@ -20,7 +20,6 @@ find_package(Threads)
 target_link_libraries(bulkmt
     ${CMAKE_THREAD_LIBS_INIT}
 )
-
 
 
 if(WIN32 OR WIN64)

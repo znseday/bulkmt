@@ -14,6 +14,8 @@ using namespace std;
 
 constexpr auto DEF_N_BLOCKS = 2;
 
+
+
 int main(int argc, const char **argv)
 {
     #if (defined WIN32) || (defined WIN64)
@@ -40,6 +42,8 @@ int main(int argc, const char **argv)
     #else
         // some
     #endif
+
+
 
     auto cmds_Console = make_unique<CommandsHandler>( (argc<2) ? DEF_N_BLOCKS : static_cast<size_t>(atoi(argv[1])) );
     auto cmds_Files   = make_unique<CommandsHandler>( (argc<2) ? DEF_N_BLOCKS : static_cast<size_t>(atoi(argv[1])) );
@@ -98,7 +102,13 @@ int main(int argc, const char **argv)
     LocalFileObs1->Join();
     LocalFileObs2->Join();
 
-    cerr << "ok, it's done" << endl;
+    cout << "Ok, it's done" << endl;
+
+    cout << "Main thread: ";    cmds_Files->PrintMetrics(); cout << endl;
+    cout << "Console thread: "; ConsoleObs->PrintMetrics(); cout << endl;
+    cout << "File 1  thread: "; LocalFileObs1->PrintMetrics(); cout << endl;
+    cout << "File 2  thread: "; LocalFileObs2->PrintMetrics(); cout << endl;
+
     return 0;
 }
 
