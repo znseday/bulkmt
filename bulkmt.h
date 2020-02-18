@@ -67,7 +67,8 @@ class Observer
 protected:
 
     std::condition_variable cv;
-    std::mutex cv_m;
+//    std::mutex cv_m;
+    std::mutex *p_cv_m = nullptr;
 
     std::queue<args> q_functions; // tuple of std::functions and CommandBlocksType
     std::atomic_bool quit = false;
@@ -110,16 +111,20 @@ public:
     // придумал вариант с лямбдой в конструкторе, в этом варианте работает.
     // Также в голове вертится мысль "а можно ли отнаследоватся от thread и что-то переопределить волшебное?", т.к. именно таким способом принято программировать многопоточность в C++Builder с их библиотечными потоками.
 
-    Observer() : thread( [this](){ while (!quit)
+    Observer() : thread( [this](){ while (!(quit && q_functions.empty())) // изменил условие для "graceful shutdown"
         {
-            std::unique_lock<std::mutex> lk(cv_m);
+            if (!p_cv_m)
+                return;
+
+            std::unique_lock<std::mutex> lk(*p_cv_m);
 
             //console_m.lock();
             //std::cerr << std::this_thread::get_id() << " waiting... " << std::endl;
             //console_m.unlock();
 
             //cv.wait(lk, [&msgs]() { return !msgs.empty() || quit; });  // из лекции
-            cv.wait(lk, [this]() { return !q_functions.empty() || quit; });
+
+            cv.wait(lk, [this]() { return !q_functions.empty() || quit; }); // cv тоже получается две штуки. Тоже делать одну???
 
             if (!q_functions.empty())
             {
@@ -159,6 +164,8 @@ public:
 
     virtual ~Observer() {quit = true;} // на всякий случай. Это вообще хороая идея? Имеет ли смысл?
 
+    void RegisterMutex(std::mutex *_p_cv_m) {p_cv_m = _p_cv_m;} // Как сделать это переключение атомарным????????
+
     void NotifyAll() {cv.notify_all();}
     void Join() {thread.join();}
     void Quit() {quit = true;}
@@ -170,6 +177,8 @@ public:
 class CommandsHandler
 {
 private:
+
+    std::mutex cv_m;
 
     std::vector<shared_ptr<Observer>> subs;
 
@@ -191,7 +200,10 @@ public:
 
     void subscribe(const shared_ptr<Observer> &obs)
     {
-        //subs.push_back(std::move(obs));
+        //subs.push_back(std::move(obs));  // мувить или не мувить?
+
+        obs->RegisterMutex(&cv_m);
+
         subs.push_back(obs);
     }
 
@@ -266,7 +278,7 @@ public:
     void Do(/*const*/ CommandBlocksType &cmds_blocks, [[maybe_unused]] time_t t) override
     {
         {
-            std::lock_guard<std::mutex> lk(cv_m);
+            std::lock_guard<std::mutex> lk(*p_cv_m);
 
             q_functions.emplace( [](CommandsType _block)
                 {
@@ -323,7 +335,7 @@ public:
     void Do(/*const*/ CommandBlocksType &cmds_blocks, time_t t) override
     {    
         {
-            std::lock_guard<std::mutex> lk(cv_m); // все, что дальше этой строчки будет выполнено только в одном потоке???
+            std::lock_guard<std::mutex> lk(*p_cv_m); // все, что дальше этой строчки будет выполнено только в одном потоке???
 //            if (cmds_block.empty())
 //                return;   // если кто-то до этого момента уже исполнил блок, то делать нечего - выходим
             //q_functions.emplace(std::async( std::launch::deferred, [t, this](CommandsType _block) // Если бы было [cmds_block, t] то cmds - это же копия ??? т.е. можно ее уже не блокировать и использовать в том виде, в котором она пришла?

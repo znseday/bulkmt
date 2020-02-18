@@ -79,12 +79,9 @@ int main(int argc, const char **argv)
     cmds_Files->ExecForAllSubs(true);
 
     //cerr << "before sleep" << endl;
-    this_thread::sleep_for(1s); // Подождать, пока потоки отработают все свои задачи!!! (без этого иногда выходит до вывода всех данных на экран)
+    //this_thread::sleep_for(1s); // Подождать, пока потоки отработают все свои задачи!!! (без этого иногда выходит до вывода всех данных на экран)
     //cerr << "after sleep, before quit" << endl;
 
-    ConsoleObs->NotifyAll();
-    LocalFileObs1->NotifyAll();
-    LocalFileObs2->NotifyAll();
 
     ConsoleObs->Quit();
     LocalFileObs1->Quit();

@@ -26,12 +26,17 @@ if(WIN32 OR WIN64)
     set_target_properties(bulkmt PROPERTIES
             CXX_STANDARD 17
             CXX_STANDARD_REQUIRED ON
-			COMPILE_OPTIONS "-Wpedantic;-Wall;-Wextra")
+            COMPILE_OPTIONS "-Wpedantic;-Wall;-Wextra"
+            #COMPILE_OPTIONS "-fsanitize=thread"
+            #LINK_OPTIONS "-fsanitize=thread"
+            )
 else()
     set_target_properties(bulkmt PROPERTIES
             CXX_STANDARD 17
             CXX_STANDARD_REQUIRED ON
-            COMPILE_OPTIONS "-Wpedantic;-Wall;-Wextra")
+            COMPILE_OPTIONS "-Wpedantic;-Wall;-Wextra"
+            COMPILE_OPTIONS "-fsanitize=thread"
+            LINK_OPTIONS "-fsanitize=thread")
 
     set(CMAKE_BUILD_TYPE Release)
 endif()
