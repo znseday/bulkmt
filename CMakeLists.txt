@@ -35,8 +35,10 @@ else()
             CXX_STANDARD 17
             CXX_STANDARD_REQUIRED ON
             COMPILE_OPTIONS "-Wpedantic;-Wall;-Wextra"
-            COMPILE_OPTIONS "-fsanitize=thread"
-            LINK_OPTIONS "-fsanitize=thread")
+            #COMPILE_OPTIONS "-fsanitize=thread"
+            #LINK_OPTIONS "-fsanitize=thread"
+            LINK_FLAGS "-fsanitize=thread"
+            )
 
     set(CMAKE_BUILD_TYPE Release)
 endif()
