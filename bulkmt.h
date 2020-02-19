@@ -77,41 +77,13 @@ protected:
 
     std::thread thread;
 
-//    void operator()()
-//    {
-//        while (!quit)
-//        {
-//            std::unique_lock<std::mutex> lk(cv_m);
-//            console_m.lock();
-//            std::cerr << std::this_thread::get_id() << " waiting... " << std::endl;
-//            console_m.unlock();
-//            //cv.wait(lk, [&msgs]() { return !msgs.empty() || quit; });
-//            cv.wait(lk, [this]() { return !msgs.empty() || quit; });
-
-//            if (!msgs.empty())
-//            {
-//               auto [f] = std::move(msgs.front());
-//               msgs.pop();
-
-//               auto s = msgs.size();
-//               lk.unlock();
-
-//               f.get();
-
-//               console_m.lock();
-//               std::cerr << std::this_thread::get_id() << " leave " << s << std::endl;
-//               console_m.unlock();
-//           }
-//        }
-//    }
 
 public:
 
-    // сначала хотел просто сделать Observer() : thread(this) и описать operator(), т.е. сделать this callable-объектом. Но почему-то не компилировалось.
-    // придумал вариант с лямбдой в конструкторе, в этом варианте работает.
-    // Также в голове вертится мысль "а можно ли отнаследоватся от thread и что-то переопределить волшебное?", т.к. именно таким способом принято программировать многопоточность в C++Builder с их библиотечными потоками.
-
-    Observer() : thread( [this](){ while (!(quit && q_functions.empty())) // изменил условие для "graceful shutdown"
+    /*
+    void operator()()
+    {
+        while (!(quit && q_functions.empty())) // изменил условие для "graceful shutdown"
         {
             if (!p_cv_m)
                 return;
@@ -135,7 +107,67 @@ public:
 
                 if (!blocks.empty())
                 {
-                    block = /*std::move*/(blocks.front());
+                    block = blocks.front();
+                   // block = std::move(blocks.front());
+                    blocks.pop();
+
+                    MetricsLocal.nBlocks++;
+                    MetricsLocal.nCommands += block.size();
+                }
+
+                //auto s = q_functions.size();
+                lk.unlock();
+
+//               console_m.lock();
+//               std::cerr << std::this_thread::get_id() << " s = " << s << "   before f.get()" << std::endl;
+//               console_m.unlock();
+
+                f(block);  // Выполняем function с параметром
+
+                //f.get(); // Просто выполняем фьючу чтобы там ни лижало
+
+                //console_m.lock();
+                //std::cerr << std::this_thread::get_id() << " leave " << s << std::endl;
+                //console_m.unlock();
+           }
+        }
+    }
+    */
+
+
+    // сначала хотел просто сделать Observer() : thread(this) и описать operator(), т.е. сделать this callable-объектом. Но почему-то не компилировалось.
+    // придумал вариант с лямбдой в конструкторе, в этом варианте работает.
+    // Также в голове вертится мысль "а можно ли отнаследоватся от thread и что-то переопределить волшебное?", т.к. именно таким способом принято программировать многопоточность в C++Builder с их библиотечными потоками.
+
+    Observer() : //thread(*this)
+      thread( [this](){ while (!(quit && q_functions.empty())) // изменил условие для "graceful shutdown"
+     //{}
+
+        {
+            if (!p_cv_m)
+                return;
+
+            std::unique_lock<std::mutex> lk(*p_cv_m);
+
+            //console_m.lock();
+            //std::cerr << std::this_thread::get_id() << " waiting... " << std::endl;
+            //console_m.unlock();
+
+            //cv.wait(lk, [&msgs]() { return !msgs.empty() || quit; });  // из лекции
+
+            cv.wait(lk, [this]() { return !q_functions.empty() || quit; }); // cv тоже получается две штуки. Тоже делать одну???
+
+            if (!q_functions.empty())
+            {
+                auto [f, blocks] = std::move(q_functions.front());
+                q_functions.pop();
+
+                CommandsType block;
+
+                if (!blocks.empty())
+                {
+                    block = blocks.front();
+                    //block = std::move(blocks.front());
                     blocks.pop();
 
                     MetricsLocal.nBlocks++;
@@ -159,6 +191,7 @@ public:
            }
         }}  )
     {}
+
 
     virtual void Do(/*const*/ CommandBlocksType &cmds_blocks, time_t t) = 0;
 
