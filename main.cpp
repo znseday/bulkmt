@@ -15,7 +15,6 @@ using namespace std;
 constexpr auto DEF_N_BLOCKS = 2;
 
 
-
 int main(int argc, const char **argv)
 {
     #if (defined WIN32) || (defined WIN64)
@@ -43,21 +42,21 @@ int main(int argc, const char **argv)
         // some
     #endif
 
-
-
     auto cmds_Console = make_unique<CommandsHandler>( (argc<2) ? DEF_N_BLOCKS : static_cast<size_t>(atoi(argv[1])) );
     auto cmds_Files   = make_unique<CommandsHandler>( (argc<2) ? DEF_N_BLOCKS : static_cast<size_t>(atoi(argv[1])) );
 
 //    LocalFileObserver LocalFileObs(&cmds);   // Old Version
 //    ConsoleObserver   ConsoleObs(&cmds);     // Old Version
 
-    auto ConsoleObs = make_shared<ConsoleObserver>();
+//    Теперь при создании ConsoleObs нам нужно передать cmds_Console->to_push_mutex. Для File аналогично.
+
+    auto ConsoleObs = make_shared<ConsoleObserver>(cmds_Console->to_push_mutex);
     ConsoleObs->Register(cmds_Console);
 
-    auto LocalFileObs1 = std::make_shared<LocalFileObserver>();
+    auto LocalFileObs1 = std::make_shared<LocalFileObserver>(cmds_Files->to_push_mutex);
     LocalFileObs1->Register(cmds_Files);
 
-    auto LocalFileObs2 = std::make_shared<LocalFileObserver>();
+    auto LocalFileObs2 = std::make_shared<LocalFileObserver>(cmds_Files->to_push_mutex);
     LocalFileObs2->Register(cmds_Files);
 
     string line;

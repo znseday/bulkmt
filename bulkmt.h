@@ -68,7 +68,9 @@ protected:
 
     std::condition_variable cv;
 //    std::mutex cv_m;
-    std::mutex *p_cv_m = nullptr;
+//    std::mutex *p_cv_m = nullptr;
+
+    std::mutex &p_cv_m; // = nullptr;
 
     std::queue<args> q_functions; // tuple of std::functions and CommandBlocksType
     std::atomic_bool quit = false;
@@ -85,10 +87,10 @@ public:
     {
         while (!(quit && q_functions.empty())) // изменил условие для "graceful shutdown"
         {
-            if (!p_cv_m)
-                return;
+            //if (!p_cv_m)
+            //    return;
 
-            std::unique_lock<std::mutex> lk(*p_cv_m);
+            std::unique_lock<std::mutex> lk(p_cv_m);
 
             //console_m.lock();
             //std::cerr << std::this_thread::get_id() << " waiting... " << std::endl;
@@ -139,15 +141,15 @@ public:
     // придумал вариант с лямбдой в конструкторе, в этом варианте работает.
     // Также в голове вертится мысль "а можно ли отнаследоватся от thread и что-то переопределить волшебное?", т.к. именно таким способом принято программировать многопоточность в C++Builder с их библиотечными потоками.
 
-    Observer() : //thread(*this)
+    Observer(std::mutex &_p_cv_m) : p_cv_m(_p_cv_m), //thread(*this)
       thread( [this](){ while (!(quit && q_functions.empty())) // изменил условие для "graceful shutdown"
      //{}
 
         {
-            if (!p_cv_m)
-                return;
+            //if (!p_cv_m)
+            //    return;
 
-            std::unique_lock<std::mutex> lk(*p_cv_m);
+            std::unique_lock<std::mutex> lk(p_cv_m);
 
             //console_m.lock();
             //std::cerr << std::this_thread::get_id() << " waiting... " << std::endl;
@@ -197,7 +199,7 @@ public:
 
     virtual ~Observer() {quit = true;} // на всякий случай. Это вообще хороая идея? Имеет ли смысл?
 
-    void RegisterMutex(std::mutex *_p_cv_m) {p_cv_m = _p_cv_m;} // Как сделать это переключение атомарным????????
+    //void RegisterMutex(std::mutex *_p_cv_m) {p_cv_m = _p_cv_m;} // Как сделать это переключение атомарным????????
 
     void NotifyAll() {cv.notify_all();}
     void Join() {thread.join();}
@@ -211,7 +213,7 @@ class CommandsHandler
 {
 private:
 
-    std::mutex cv_m;
+    //std::mutex cv_m;
 
     std::vector<shared_ptr<Observer>> subs;
 
@@ -223,11 +225,11 @@ private:
 
     CommandBlocksType CommandBlocks;
 
-    std::mutex to_push_mutex;
-
     MetricsMainThread MetricsMain;
 
 public:
+
+    std::mutex to_push_mutex;
 
     CommandsHandler(size_t _N) : N(_N) {}
 
@@ -235,7 +237,7 @@ public:
     {
         //subs.push_back(std::move(obs));  // мувить или не мувить?
 
-        obs->RegisterMutex(&cv_m);
+        //obs->RegisterMutex(&cv_m);
 
         subs.push_back(obs);
     }
@@ -303,6 +305,8 @@ class ConsoleObserver : public std::enable_shared_from_this<ConsoleObserver>, pu
 {
 public:
 
+    ConsoleObserver(std::mutex &_p_cv_m) : Observer(_p_cv_m) {}
+
     void Register(const unique_ptr<CommandsHandler> &_cmds)
     {
         _cmds->subscribe(shared_from_this());
@@ -311,7 +315,7 @@ public:
     void Do(/*const*/ CommandBlocksType &cmds_blocks, [[maybe_unused]] time_t t) override
     {
         {
-            std::lock_guard<std::mutex> lk(*p_cv_m);
+            std::lock_guard<std::mutex> lk(p_cv_m);
 
             q_functions.emplace( [](CommandsType _block)
                 {
@@ -360,6 +364,8 @@ protected:
     //std::mutex file_m; // вспомогательный мьютекс для LocalFileObserver
 public:
 
+    LocalFileObserver(std::mutex &_p_cv_m) : Observer(_p_cv_m) {}
+
     void Register(const unique_ptr<CommandsHandler> &_cmds)
     {
         _cmds->subscribe(shared_from_this());
@@ -368,7 +374,7 @@ public:
     void Do(/*const*/ CommandBlocksType &cmds_blocks, time_t t) override
     {    
         {
-            std::lock_guard<std::mutex> lk(*p_cv_m); // все, что дальше этой строчки будет выполнено только в одном потоке???
+            std::lock_guard<std::mutex> lk(p_cv_m); // все, что дальше этой строчки будет выполнено только в одном потоке???
 //            if (cmds_block.empty())
 //                return;   // если кто-то до этого момента уже исполнил блок, то делать нечего - выходим
             //q_functions.emplace(std::async( std::launch::deferred, [t, this](CommandsType _block) // Если бы было [cmds_block, t] то cmds - это же копия ??? т.е. можно ее уже не блокировать и использовать в том виде, в котором она пришла?
