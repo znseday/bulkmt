@@ -1,0 +1,4 @@
+<map id="Observer" name="Observer">
+<area shape="rect" id="node2" href="$class_console_observer.html" title="ConsoleObserver" alt="" coords="5,80,136,107"/>
+<area shape="rect" id="node3" href="$class_local_file_observer.html" title="LocalFileObserver" alt="" coords="160,80,293,107"/>
+</map>
