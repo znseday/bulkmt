@@ -7,8 +7,6 @@
 #include <iterator>
 #include <algorithm>
 #include <memory>
-//#include <chrono>
-//#include <ratio>
 #include <thread>
 #include <ctime>
 #include <sstream>
@@ -41,18 +39,8 @@ void TestFile(const char *file_name);
 
 extern std::mutex console_m;
 
-//using args = std::tuple<
-////        std::function<void(const std::string &, const std::string &)>,
-//        std::future<void>
-//        >;
-
-
 using CommandsType = std::vector<std::string>;
 using CommandBlocksType = std::queue<CommandsType>;
-
-//using args = std::function<void(CommandsType)>;
-
-//using args = std::future<void(CommandBlocksType)>;
 
 using args = std::tuple<
         std::function<void(CommandsType)>,
@@ -61,16 +49,13 @@ using args = std::tuple<
 
 //-----------------------------------------------
 
-
 class Observer
 {
 protected:
 
     std::condition_variable cv;
-//    std::mutex cv_m;
-//    std::mutex *p_cv_m = nullptr;
 
-    std::mutex &p_cv_m; // = nullptr;
+    std::mutex &p_cv_m;
 
     std::queue<args> q_functions; // tuple of std::functions and CommandBlocksType
     std::atomic_bool quit = false;
@@ -85,7 +70,7 @@ public:
     /*
     void operator()()
     {
-        while (!(quit && q_functions.empty())) // изменил условие для "graceful shutdown"
+        while (!(quit && q_functions.empty()))
         {
             //if (!p_cv_m)
             //    return;
@@ -96,9 +81,9 @@ public:
             //std::cerr << std::this_thread::get_id() << " waiting... " << std::endl;
             //console_m.unlock();
 
-            //cv.wait(lk, [&msgs]() { return !msgs.empty() || quit; });  // из лекции
+            //cv.wait(lk, [&msgs]() { return !msgs.empty() || quit; });
 
-            cv.wait(lk, [this]() { return !q_functions.empty() || quit; }); // cv тоже получается две штуки. Тоже делать одну???
+            cv.wait(lk, [this]() { return !q_functions.empty() || quit; });
 
             if (!q_functions.empty())
             {
@@ -124,9 +109,9 @@ public:
 //               std::cerr << std::this_thread::get_id() << " s = " << s << "   before f.get()" << std::endl;
 //               console_m.unlock();
 
-                f(block);  // Выполняем function с параметром
+                f(block);
 
-                //f.get(); // Просто выполняем фьючу чтобы там ни лижало
+                //f.get();
 
                 //console_m.lock();
                 //std::cerr << std::this_thread::get_id() << " leave " << s << std::endl;
@@ -139,25 +124,15 @@ public:
 
     // сначала хотел просто сделать Observer() : thread(this) и описать operator(), т.е. сделать this callable-объектом. Но почему-то не компилировалось.
     // придумал вариант с лямбдой в конструкторе, в этом варианте работает.
-    // Также в голове вертится мысль "а можно ли отнаследоватся от thread и что-то переопределить волшебное?", т.к. именно таким способом принято программировать многопоточность в C++Builder с их библиотечными потоками.
 
     Observer(std::mutex &_p_cv_m) : p_cv_m(_p_cv_m), //thread(*this)
-      thread( [this](){ while (!(quit && q_functions.empty())) // изменил условие для "graceful shutdown"
+      thread( [this](){ while (!(quit && q_functions.empty())) // chanched for "graceful shutdown"
      //{}
 
         {
-            //if (!p_cv_m)
-            //    return;
-
             std::unique_lock<std::mutex> lk(p_cv_m);
 
-            //console_m.lock();
-            //std::cerr << std::this_thread::get_id() << " waiting... " << std::endl;
-            //console_m.unlock();
-
-            //cv.wait(lk, [&msgs]() { return !msgs.empty() || quit; });  // из лекции
-
-            cv.wait(lk, [this]() { return !q_functions.empty() || quit; }); // cv тоже получается две штуки. Тоже делать одну???
+            cv.wait(lk, [this]() { return !q_functions.empty() || quit; });
 
             if (!q_functions.empty())
             {
@@ -176,20 +151,9 @@ public:
                     MetricsLocal.nCommands += block.size();
                 }
 
-                //auto s = q_functions.size();
                 lk.unlock();
 
-//               console_m.lock();
-//               std::cerr << std::this_thread::get_id() << " s = " << s << "   before f.get()" << std::endl;
-//               console_m.unlock();
-
-                f(block);  // Выполняем function с параметром
-
-                //f.get(); // Просто выполняем фьючу чтобы там ни лижало
-
-                //console_m.lock();
-                //std::cerr << std::this_thread::get_id() << " leave " << s << std::endl;
-                //console_m.unlock();
+                f(block);
            }
         }}  )
     {}
@@ -197,9 +161,7 @@ public:
 
     virtual void Do(/*const*/ CommandBlocksType &cmds_blocks, time_t t) = 0;
 
-    virtual ~Observer() {quit = true;} // на всякий случай. Это вообще хороая идея? Имеет ли смысл?
-
-    //void RegisterMutex(std::mutex *_p_cv_m) {p_cv_m = _p_cv_m;} // Как сделать это переключение атомарным????????
+    virtual ~Observer() {quit = true;}
 
     void NotifyAll() {cv.notify_all();}
     void Join() {thread.join();}
@@ -212,8 +174,6 @@ public:
 class CommandsHandler
 {
 private:
-
-    //std::mutex cv_m;
 
     std::vector<shared_ptr<Observer>> subs;
 
@@ -235,10 +195,6 @@ public:
 
     void subscribe(const shared_ptr<Observer> &obs)
     {
-        //subs.push_back(std::move(obs));  // мувить или не мувить?
-
-        //obs->RegisterMutex(&cv_m);
-
         subs.push_back(obs);
     }
 
@@ -256,7 +212,6 @@ public:
         if (cmds.size() == N && !BracketOpenLevel)
         {
             ExecForAllSubs(false);
-            //cmds.clear();
         }
         if (str == "{")
         {
@@ -281,8 +236,8 @@ public:
     {      
         if ( !cmds.empty() &&  ( BracketOpenLevel == 0 || (BracketOpenLevel == 1 && !isFinished) ) )
         {
-            to_push_mutex.lock();      // Нужен ли этот мьютекс? Блочит ли он все остальные потоки?
-            CommandBlocks.push(cmds);  // Нужно, чтобы этот push как-то выполнился атомарно
+            to_push_mutex.lock();
+            CommandBlocks.push(cmds);
             to_push_mutex.unlock();
 
             MetricsMain.nBlocks++;
@@ -290,7 +245,7 @@ public:
 
             for (auto &s : subs)
             {
-                s->Do(CommandBlocks, timeFirst);   // "Do" здесь значит просто добавить лямбду и параметр в очередь !
+                s->Do(CommandBlocks, timeFirst);   // "Do" adds a command into a queue
             }
 
             cmds.clear();
@@ -318,19 +273,16 @@ public:
             std::lock_guard<std::mutex> lk(p_cv_m);
 
             q_functions.emplace( [](CommandsType _block)
-                {
-                    // здесь и далее в лямбде - код, который будет выполнятся не сейчас, а когда-то позже в отдельном потоке
+                {                   
                     if (_block.empty())
-                        return;   // если кто-то до этого момента уже исполнил блок, то делать нечего - выходим
+                        return;
 
-                    stringstream s;     // Я так понимаю, что если бы у нас будет больше одного ConsoleObserver то начнет конка за этот s. Верно???
-                    //console_m.lock();
+                    stringstream s;
                     s << "bulk: ";
 
-                    size_t cmds_size = _block.size(); // _block - это локальая копия? можно не копировать???
+                    size_t cmds_size = _block.size();
 
                     s << "(size = " << cmds_size << ") : ";
-                    //console_m.unlock();
 
                     for (size_t i = 0; i < cmds_size; i++)
                     {
@@ -342,26 +294,17 @@ public:
                     std::cout << s.str();
                     console_m.unlock();
 
-                } // конец лямбды
+                } // end of lambda
                 , cmds_blocks);
         }
-        cv.notify_one();  // vs. cv.notify_all() ?????????
-        //cv.notify_all();
+        cv.notify_one();
 
-
-          // далее код от обычной бульки
-//        std::cout << "bulk: ";
-//        size_t cmds_size = cmds.size();
-//        for (size_t i = 0; i < cmds_size; i++)
-//            std::cout << fa(stoi(cmds[i])) << (  (i<(cmds_size-1)) ? ", " : "\n");
     }
 };
 //-----------------------------------------------
 
 class LocalFileObserver : public Observer, public std::enable_shared_from_this<LocalFileObserver>
 {
-protected:
-    //std::mutex file_m; // вспомогательный мьютекс для LocalFileObserver
 public:
 
     LocalFileObserver(std::mutex &_p_cv_m) : Observer(_p_cv_m) {}
@@ -374,21 +317,16 @@ public:
     void Do(/*const*/ CommandBlocksType &cmds_blocks, time_t t) override
     {    
         {
-            std::lock_guard<std::mutex> lk(p_cv_m); // все, что дальше этой строчки будет выполнено только в одном потоке???
-//            if (cmds_block.empty())
-//                return;   // если кто-то до этого момента уже исполнил блок, то делать нечего - выходим
-            //q_functions.emplace(std::async( std::launch::deferred, [t, this](CommandsType _block) // Если бы было [cmds_block, t] то cmds - это же копия ??? т.е. можно ее уже не блокировать и использовать в том виде, в котором она пришла?
-
+            std::lock_guard<std::mutex> lk(p_cv_m);
 
             q_functions.emplace( [t, this](CommandsType _block)
-                {
-                    // здесь и далее в лямбде - код, который будет выполнятся не сейчас, а когда-то позже в отдельном потоке
+                {               
                     if (_block.empty())
-                        return;   // если кто-то до этого момента уже исполнил блок, то делать нечего - выходим
+                        return;
 
-                    static std::atomic_int nFile = 0; // Сквозная нумерация // Нужно делать атомиком???
+                    static std::atomic_int nFile = 0; // atomic???
 
-                    stringstream s; // Этот s у каждой лямбды свой или может быть подстава с общим доступом (data racing)?
+                    stringstream s;
                     s << "bulk" << t << "-" << std::this_thread::get_id() << "-" << nFile++ << ".log";
                     ofstream f( s.str() );
 
@@ -396,35 +334,19 @@ public:
 
                     for (size_t i = 0; i < cmds_block_size; i++)
                     {
-                        //file_m.lock();
-                        unsigned long long fi_param = stoi(_block[i]); // сейчас _block - локальная копия
-                        //file_m.unlock();
-                        // далее само долгое вычисления пусть будет незалоченым и выполняется параллельно
-                        unsigned long long fi_res = fi(fi_param); // если cmds_block - локальная копия, то можно не лочить, верно?
+                        unsigned long long fi_param = stoi(_block[i]);
 
-                        f << fi_res << std::endl; // файловые потоки не лочим, т.к. они все уникальные для каждого потока. Верно?
+                        unsigned long long fi_res = fi(fi_param);
+
+                        f << fi_res << std::endl;
                     }
 
                     f.close();
 
-                },  // конец лямбды
+                },  // end of lambda
                 cmds_blocks);
-
-//            cmds.clear();  // удаляем блок команд, чтобы больше никому не достался
         }
-        cv.notify_one(); // vs. cv.notify_all() ????????
-        //cv.notify_all();
-
-
-//        stringstream s; // далее - остатки старой обычной бульки
-//        s << "bulk" << t << "-" << std::this_thread::get_id() << ".log";
-//        ofstream f( s.str() );
-
-//        size_t cmds_size = cmds.size();
-//        for (size_t i = 0; i < cmds_size; i++)
-//            f << fi(stoi(cmds[i])) << std::endl;
-
-//        f.close();
+        cv.notify_one();
     }
 };
 //-----------------------------------------------

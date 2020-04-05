@@ -45,11 +45,6 @@ int main(int argc, const char **argv)
     auto cmds_Console = make_unique<CommandsHandler>( (argc<2) ? DEF_N_BLOCKS : static_cast<size_t>(atoi(argv[1])) );
     auto cmds_Files   = make_unique<CommandsHandler>( (argc<2) ? DEF_N_BLOCKS : static_cast<size_t>(atoi(argv[1])) );
 
-//    LocalFileObserver LocalFileObs(&cmds);   // Old Version
-//    ConsoleObserver   ConsoleObs(&cmds);     // Old Version
-
-//    Теперь при создании ConsoleObs нам нужно передать cmds_Console->to_push_mutex. Для File аналогично.
-
     auto ConsoleObs = make_shared<ConsoleObserver>(cmds_Console->to_push_mutex);
     ConsoleObs->Register(cmds_Console);
 
@@ -77,22 +72,13 @@ int main(int argc, const char **argv)
     cmds_Console->ExecForAllSubs(true);
     cmds_Files->ExecForAllSubs(true);
 
-    //cerr << "before sleep" << endl;
-    //this_thread::sleep_for(1s); // Подождать, пока потоки отработают все свои задачи!!! (без этого иногда выходит до вывода всех данных на экран)
-    //cerr << "after sleep, before quit" << endl;
-
-
     ConsoleObs->Quit();
     LocalFileObs1->Quit();
     LocalFileObs2->Quit();
 
-    //this_thread::sleep_for(1s); // just in case
-
     ConsoleObs->NotifyAll();
     LocalFileObs1->NotifyAll();
     LocalFileObs2->NotifyAll();
-
-    //this_thread::sleep_for(1s); // just in case
 
     ConsoleObs->Join();
     LocalFileObs1->Join();
